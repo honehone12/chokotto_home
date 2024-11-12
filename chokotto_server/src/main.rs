@@ -91,6 +91,25 @@ async fn validate_file(path: impl AsRef<Path>) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn validate_file_name(name: &str) -> anyhow::Result<()> {
+    const MAX_LEN: usize = 25;
+
+    if name.len() == 0 || name.len() > MAX_LEN {
+        bail!("invalid file name length");
+    } 
+
+    if !name.chars().all(|c| {
+        c.is_ascii_alphanumeric() 
+            || c == '_'  || c == '-'
+            || c == '('  || c == ')'
+            || c == '.'
+    }) {
+        bail!("invalid file name");
+    }
+    
+    Ok(())
+}
+
 #[handler]
 async fn upload(req: &mut Request, res: &mut Response) {
     const FILE_KEY: &str = "file";
@@ -113,6 +132,11 @@ async fn upload(req: &mut Request, res: &mut Response) {
         bad_form(res);
         return;
     };
+    if let Err(e) = validate_file_name(file_name) {
+        warn!("{e}");
+        bad_form(res);
+        return;
+    }
     
     let dest = match make_dest(file_name).await {
         Ok(p) => p,
@@ -149,4 +173,15 @@ async fn main() -> anyhow::Result<()> {
     Server::new(listener).serve(router).await;
 
     Ok(())
+}
+
+mod test {
+    #[cfg(test)]
+    use super::validate_file_name;
+
+    #[test]
+    fn test_validate_file_name() {
+        assert!(validate_file_name("my_pic_11-11(9).jpg").is_ok());
+        assert!(validate_file_name("!#$%&'=~^|@`{[]}:*;+<>,/?\"\"\\ あいアイ甲乙").is_err());
+    }
 }
