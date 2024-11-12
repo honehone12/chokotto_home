@@ -1,14 +1,16 @@
-use std::path::PathBuf;
-use tokio::{fs, net::ToSocketAddrs};
+use std::path::{Path, PathBuf};
+use tokio::{fs::{self, File}, net::ToSocketAddrs};
 use salvo::prelude::*;
 use tracing::{info, warn};
 use anyhow::bail;
 
-async fn check_dir() -> anyhow::Result<()> {
+async fn check_dest_dir() -> anyhow::Result<()> {
+    const DIR_NAME: &str = "Downloads";
+
     let Some(mut download_dir) = dirs::home_dir() else {
         bail!("could not find home dir");
     };
-    download_dir.push("Downloads");
+    download_dir.push(DIR_NAME);
 
     if !fs::try_exists(&download_dir).await? {
         info!("creating '{download_dir:?}' directory");
@@ -18,10 +20,10 @@ async fn check_dir() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn local_listen_at() -> anyhow::Result<impl ToSocketAddrs + Send> {
-    let local_ip = local_ip_address::local_ip()?;
+fn local_listen_at() -> anyhow::Result<impl ToSocketAddrs> {
     const LISTEN_PORT: u16 = 4545;
-
+    let local_ip = local_ip_address::local_ip()?;
+    
     Ok((local_ip, LISTEN_PORT))
 }
 
@@ -37,33 +39,35 @@ fn bad_form(res: &mut Response) {
 }
 
 async fn make_dest(file_name: &str) -> anyhow::Result<PathBuf> {
+    const DIR_NAME: &str = "Downloads";
+
     let Some(mut dest) = dirs::home_dir() else {
         bail!("could not find home dir");
     };
-    dest.push(format!("Downloads/{file_name}"));
+    dest.push(format!("{DIR_NAME}/{file_name}"));
     
     if !fs::try_exists(&dest).await? {
         return Ok(dest);
     }
 
-    let Some(dest_str) = dest.to_str() else {
+    let Some(dest) = dest.to_str() else {
         bail!("os path is not supported to avoid overwrite");
     };
     let mut n = 1u32;
     loop {
-        let mut new_dest_s = String::from(dest_str);
+        let mut new_dest = String::from(dest);
         let numbered = format!("({n})");
-        match new_dest_s.find('.') {
+        match new_dest.find('.') {
             Some(idx) => {
-                new_dest_s.insert_str(idx, &numbered);
+                new_dest.insert_str(idx, &numbered);
             }
             None => {
-                new_dest_s.push_str(&numbered);
+                new_dest.push_str(&numbered);
             }
         }
 
-        if !fs::try_exists(&new_dest_s).await? {
-            return Ok(new_dest_s.into());
+        if !fs::try_exists(&new_dest).await? {
+            return Ok(new_dest.into());
         }
 
         let (m, overflow) = n.overflowing_add(1);
@@ -72,6 +76,19 @@ async fn make_dest(file_name: &str) -> anyhow::Result<PathBuf> {
         }
         n = m;
     }
+}
+
+async fn validate_file(path: impl AsRef<Path>) -> anyhow::Result<()> {
+    let file = File::open(path).await?;
+    let meta = file.metadata().await?;
+    if !meta.is_file() {
+        bail!("received non-standard file");
+    }
+    if meta.len() == 0{
+        bail!("the file is empty");
+    }
+    
+    Ok(())
 }
 
 #[handler]
@@ -83,6 +100,13 @@ async fn upload(req: &mut Request, res: &mut Response) {
         bad_form(res);    
         return;
     };
+
+    let tmp_path = file.path();
+    if let Err(e) = validate_file(tmp_path).await {
+        warn!("{e}");
+        bad_form(res);
+        return;
+    }
 
     let Some(file_name) = file.name() else {
         warn!("could not find a file name");
@@ -99,7 +123,7 @@ async fn upload(req: &mut Request, res: &mut Response) {
         }
     };
         
-    match tokio::fs::copy(file.path(), &dest).await {
+    match tokio::fs::copy(tmp_path, &dest).await {
         Ok(n) =>  {
             info!("created {dest:?} {n}bytes");
             res.render("ok");
@@ -115,7 +139,7 @@ async fn upload(req: &mut Request, res: &mut Response) {
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();    
 
-    check_dir().await?;
+    check_dest_dir().await?;
 
     let router = Router::new().get(index)
         .push(Router::with_path("upload").post(upload));
