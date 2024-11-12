@@ -182,6 +182,8 @@ mod test {
     #[test]
     fn test_validate_file_name() {
         assert!(validate_file_name("my_pic_11-11(9).jpg").is_ok());
-        assert!(validate_file_name("!#$%&'=~^|@`{[]}:*;+<>,/?\"\"\\ あいアイ甲乙").is_err());
+        assert!("!#$%&'=~^|@`{[]}:*;+<>,/?\"\"\\ あいアイ甲乙".chars().all(|c| {
+            validate_file_name(&c.to_string()).is_err()
+        }));
     }
 }
