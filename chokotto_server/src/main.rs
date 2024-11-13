@@ -4,12 +4,12 @@ use salvo::prelude::*;
 use tracing::{info, warn};
 use anyhow::bail;
 
-async fn check_dest_dir() -> anyhow::Result<()> {
-    const DIR_NAME: &str = "Downloads";
-
+async fn check_save_dir() -> anyhow::Result<()> {
     let Some(mut download_dir) = dirs::home_dir() else {
         bail!("could not find home dir");
     };
+
+    const DIR_NAME: &str = "Downloads";
     download_dir.push(DIR_NAME);
 
     if !fs::try_exists(&download_dir).await? {
@@ -21,8 +21,8 @@ async fn check_dest_dir() -> anyhow::Result<()> {
 }
 
 fn local_listen_at() -> anyhow::Result<impl ToSocketAddrs> {
-    const LISTEN_PORT: u16 = 4545;
     let local_ip = local_ip_address::local_ip()?;
+    const LISTEN_PORT: u16 = 4545;
     
     Ok((local_ip, LISTEN_PORT))
 }
@@ -39,11 +39,11 @@ fn bad_form(res: &mut Response) {
 }
 
 async fn make_dest(file_name: &str) -> anyhow::Result<PathBuf> {
-    const DIR_NAME: &str = "Downloads";
-
     let Some(mut dest) = dirs::home_dir() else {
         bail!("could not find home dir");
     };
+
+    const DIR_NAME: &str = "Downloads";
     dest.push(format!("{DIR_NAME}/{file_name}"));
     
     if !fs::try_exists(&dest).await? {
@@ -93,7 +93,6 @@ async fn validate_file(path: impl AsRef<Path>) -> anyhow::Result<()> {
 
 fn validate_file_name(name: &str) -> anyhow::Result<()> {
     const MAX_LEN: usize = 25;
-
     if name.len() == 0 || name.len() > MAX_LEN {
         bail!("invalid file name length");
     } 
@@ -113,7 +112,6 @@ fn validate_file_name(name: &str) -> anyhow::Result<()> {
 #[handler]
 async fn upload(req: &mut Request, res: &mut Response) {
     const FILE_KEY: &str = "file";
-    
     let Some(file) = req.file(FILE_KEY).await else {
         warn!("no files were attached");
         bad_form(res);    
@@ -163,7 +161,7 @@ async fn upload(req: &mut Request, res: &mut Response) {
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();    
 
-    check_dest_dir().await?;
+    check_save_dir().await?;
 
     let router = Router::new().get(index)
         .push(Router::with_path("upload").post(upload));

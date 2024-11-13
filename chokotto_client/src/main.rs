@@ -1,5 +1,5 @@
-use std::path::Path;
-use reqwest::IntoUrl;
+use std::{net::IpAddr, path::Path, str::FromStr};
+use reqwest::{multipart, IntoUrl};
 use tokio::fs::{self, File};
 use clap::Parser;
 use anyhow::bail;
@@ -32,22 +32,21 @@ async fn check_file(path: impl AsRef<Path>) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn make_url(literal: &str, use_http3: bool) -> anyhow::Result<impl IntoUrl> {
-    const TARGET_PORT: u16 = 4545;
-    const HTTP: &str = "http";
-    const HTTPS: &str = "https";
-
-    let mut url = Url::parse(literal)?;
+fn make_url(ip_addr: &str, use_http3: bool) -> anyhow::Result<impl IntoUrl> {
+    _ = IpAddr::from_str(ip_addr)?;
+    
     let scheme = match use_http3 {
         true => HTTPS,
         false => HTTP
     };
-    if url.set_scheme(scheme).is_err() {
-        bail!("failed to set scheme");
-    }
-    if url.set_port(Some(TARGET_PORT)).is_err() {
-        bail!("failed to set port");
-    }
+
+    const TARGET_PORT: u16 = 4545;
+    const HTTP: &str = "http";
+    const HTTPS: &str = "https";
+    
+    let s = format!("{scheme}://{ip_addr}:{TARGET_PORT}");
+    let mut url = Url::parse(&s)?;
+    url.set_path("/upload");
 
     Ok(url)
 }
@@ -56,13 +55,23 @@ fn make_url(literal: &str, use_http3: bool) -> anyhow::Result<impl IntoUrl> {
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
     let cli = Cli::parse();
-    
+
     check_file(&cli.file).await?;
     let url = make_url(&cli.address, false)?; 
     
+    const FILE_KEY: &str = "file";
+    let form = multipart::Form::new().file(FILE_KEY, cli.file).await?;
     let client = reqwest::Client::new();
+
+    let res = client.post(url)
+        .multipart(form)
+        .send().await?;
     
-    
+    let status = res.status();
+    match res.text().await {
+        Ok(msg) => info!("{msg}, request has done with status code {status}"),
+        Err(_) => info!("request has done with status code {status}")
+    }
 
     Ok(())
 }
