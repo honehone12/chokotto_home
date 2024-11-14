@@ -53,10 +53,10 @@ async fn make_dest(file_name: &str) -> anyhow::Result<PathBuf> {
     let Some(dest) = dest.to_str() else {
         bail!("os path is not supported to avoid overwrite");
     };
-    let mut n = 1u32;
+    let mut n = 0u32;
     loop {
         let mut new_dest = String::from(dest);
-        let numbered = format!("({n})");
+        let numbered = format!("_copy{n}");
         match new_dest.find('.') {
             Some(idx) => {
                 new_dest.insert_str(idx, &numbered);
@@ -99,8 +99,7 @@ fn validate_file_name(name: &str) -> anyhow::Result<()> {
 
     if !name.chars().all(|c| {
         c.is_ascii_alphanumeric() 
-            || c == '_'  || c == '-'
-            || c == '('  || c == ')'
+            || c == '_'  
             || c == '.'
     }) {
         bail!("invalid file name");
@@ -159,6 +158,7 @@ async fn upload(req: &mut Request, res: &mut Response) {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    
     tracing_subscriber::fmt::init();    
 
     check_save_dir().await?;
@@ -167,9 +167,9 @@ async fn main() -> anyhow::Result<()> {
         .push(Router::with_path("upload").post(upload));
 
     let listen_at = local_listen_at()?;
-    let key_cert = Keycert::new()
-        .cert(include_bytes!("../../cert/server.crt"))
-        .key(include_bytes!("../../cert/server.key"));
+    let cert = include_bytes!("../../cert/server.crt");
+    let key = include_bytes!("../../cert/server.key");
+    let key_cert = Keycert::new().cert(cert).key(key);
     let tls_config = RustlsConfig::new(key_cert);
     let tls_listener = TcpListener::new(listen_at).rustls(tls_config.clone());
     let quic_config = tls_config.build_quinn_config()?;
@@ -188,8 +188,8 @@ mod test {
 
     #[test]
     fn test_validate_file_name() {
-        assert!(validate_file_name("my_pic_11-11(9).jpg").is_ok());
-        assert!("!#$%&'=~^|@`{[]}:*;+<>,/?\"\"\\ あいアイ甲乙".chars().all(|c| {
+        assert!(validate_file_name("my_pic_11_14.jpg").is_ok());
+        assert!("!#$%&'()-=~^|@`{[]}:*;+<>,/?\"\"\\ あいアイ甲乙".chars().all(|c| {
             validate_file_name(&c.to_string()).is_err()
         }));
     }

@@ -59,7 +59,8 @@ async fn main() -> anyhow::Result<()> {
     check_file(&cli.file).await?;
     let url = make_url(&cli.address, false)?; 
     
-    let cert = Certificate::from_pem(include_bytes!("../../cert/server.crt"))?;
+    let cert = include_bytes!("../../cert/server.crt");
+    let cert = Certificate::from_pem(cert)?;
     let client = reqwest::Client::builder()
         .http3_prior_knowledge()
         .add_root_certificate(cert)
