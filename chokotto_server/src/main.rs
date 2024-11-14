@@ -1,5 +1,5 @@
 use std::{net::IpAddr, path::{Path, PathBuf}};
-use tokio::{fs::{self, File}, net::ToSocketAddrs};
+use tokio::fs::{self, File};
 use salvo::{conn::rustls::{Keycert, RustlsConfig}, prelude::*};
 use tracing::{info, warn};
 use anyhow::bail;
@@ -161,16 +161,16 @@ async fn upload(req: &mut Request, res: &mut Response) {
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();    
 
-    let cert = include_bytes!("../../cert/server.crt");
-    let key = include_bytes!("../../cert/server.key");
-
     check_save_dir().await?;
 
     let router = Router::new().get(index)
         .push(Router::with_path("upload").post(upload));
 
     let listen_at = local_listen_at()?;
-    let tls_config = RustlsConfig::new(Keycert::new().cert(cert).key(key));
+    let key_cert = Keycert::new()
+        .cert(include_bytes!("../../cert/server.crt"))
+        .key(include_bytes!("../../cert/server.key"));
+    let tls_config = RustlsConfig::new(key_cert);
     let tls_listener = TcpListener::new(listen_at).rustls(tls_config.clone());
     let quic_config = tls_config.build_quinn_config()?;
     let quic_listenr = QuinnListener::new(quic_config, listen_at)

@@ -1,5 +1,5 @@
 use std::{net::IpAddr, path::Path, str::FromStr};
-use reqwest::{multipart, IntoUrl};
+use reqwest::{multipart, Certificate, IntoUrl, Version};
 use tokio::fs::{self, File};
 use clap::Parser;
 use anyhow::bail;
@@ -59,11 +59,16 @@ async fn main() -> anyhow::Result<()> {
     check_file(&cli.file).await?;
     let url = make_url(&cli.address, false)?; 
     
+    let cert = Certificate::from_pem(include_bytes!("../../cert/server.crt"))?;
+    let client = reqwest::Client::builder()
+        .http3_prior_knowledge()
+        .add_root_certificate(cert)
+        .build()?;
+
     const FILE_KEY: &str = "file";
     let form = multipart::Form::new().file(FILE_KEY, cli.file).await?;
-    let client = reqwest::Client::new();
-
     let res = client.post(url)
+        .version(Version::HTTP_3)
         .multipart(form)
         .send().await?;
     
