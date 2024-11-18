@@ -226,7 +226,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "reqwest",
+ "reqwest 0.12.9",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -238,6 +238,7 @@ name = "chokotto_home_server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "clap",
  "dirs",
  "local-ip-address",
  "salvo",
@@ -1092,7 +1093,7 @@ checksum = "3669cf5561f8d27e8fc84cc15e58350e70f557d4d65f70e3154e54cd2f8e1782"
 dependencies = [
  "libc",
  "neli",
- "thiserror",
+ "thiserror 1.0.68",
  "windows-sys 0.59.0",
 ]
 
@@ -1502,7 +1503,7 @@ dependencies = [
  "rustc-hash",
  "rustls",
  "socket2",
- "thiserror",
+ "thiserror 1.0.68",
  "tokio",
  "tracing",
 ]
@@ -1519,7 +1520,7 @@ dependencies = [
  "rustc-hash",
  "rustls",
  "slab",
- "thiserror",
+ "thiserror 1.0.68",
  "tinyvec",
  "tracing",
 ]
@@ -1535,7 +1536,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1594,7 +1595,7 @@ checksum = "ba009ff324d1fc1b900bd1fdb31564febe58a8ccc8a6fdbb93b543d33b13ca43"
 dependencies = [
  "getrandom",
  "libredox",
- "thiserror",
+ "thiserror 1.0.68",
 ]
 
 [[package]]
@@ -1629,8 +1630,6 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 [[package]]
 name = "reqwest"
 version = "0.12.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a77c62af46e79de0a562e1a9849205ffcb7fc1238876e9bd743357570e04046f"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -1670,6 +1669,51 @@ dependencies = [
  "tokio",
  "tokio-native-tls",
  "tokio-rustls",
+ "tokio-util",
+ "tower-service",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-streams",
+ "web-sys",
+ "windows-registry",
+]
+
+[[package]]
+name = "reqwest"
+version = "0.12.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a77c62af46e79de0a562e1a9849205ffcb7fc1238876e9bd743357570e04046f"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "encoding_rs",
+ "futures-core",
+ "futures-util",
+ "h2",
+ "http",
+ "http-body",
+ "http-body-util",
+ "hyper",
+ "hyper-rustls",
+ "hyper-tls",
+ "hyper-util",
+ "ipnet",
+ "js-sys",
+ "log",
+ "mime",
+ "native-tls",
+ "once_cell",
+ "percent-encoding",
+ "pin-project-lite",
+ "rustls-pemfile",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "sync_wrapper",
+ "system-configuration",
+ "tokio",
+ "tokio-native-tls",
  "tokio-util",
  "tower-service",
  "url",
@@ -1783,8 +1827,6 @@ checksum = "f3cb5ba0dc43242ce17de99c180e96db90b235b8a9fdc9543c96d2209116bd9f"
 [[package]]
 name = "salvo"
 version = "0.74.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "552b76da24853093da265b89150188e8049ccf31550a0294e10df9f7221ec965"
 dependencies = [
  "salvo-jwt-auth",
  "salvo-proxy",
@@ -1812,8 +1854,6 @@ dependencies = [
 [[package]]
 name = "salvo-jwt-auth"
 version = "0.74.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d676e397c58e84e6e911c797a4582987042e9776cb38bb3eb8dd7422fc951fd"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -1824,7 +1864,7 @@ dependencies = [
  "salvo_core",
  "serde",
  "serde_json",
- "thiserror",
+ "thiserror 2.0.3",
  "tokio",
  "tracing",
 ]
@@ -1832,8 +1872,6 @@ dependencies = [
 [[package]]
 name = "salvo-proxy"
 version = "0.74.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1359d1fde15ace7a41eb3f28a72447f69ec7e6d30cccf8bf05c1deb17925b92"
 dependencies = [
  "fastrand",
  "futures-util",
@@ -1841,7 +1879,7 @@ dependencies = [
  "hyper-rustls",
  "hyper-util",
  "percent-encoding",
- "reqwest",
+ "reqwest 0.12.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "salvo_core",
  "tokio",
  "tracing",
@@ -1850,8 +1888,6 @@ dependencies = [
 [[package]]
 name = "salvo-serde-util"
 version = "0.74.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f20345cf0ce993ce5e2b96e9e4783ef4c08cd106dd59c6da6ac6af65a9b59ed"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1861,8 +1897,6 @@ dependencies = [
 [[package]]
 name = "salvo_core"
 version = "0.74.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e37fdc3a8f7d4f4b63649b1b3cd833b61160e1c430912dcb9c0fed2b51d5766f"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1899,7 +1933,7 @@ dependencies = [
  "serde_json",
  "sync_wrapper",
  "tempfile",
- "thiserror",
+ "thiserror 2.0.3",
  "tokio",
  "tokio-rustls",
  "tokio-util",
@@ -1909,8 +1943,6 @@ dependencies = [
 [[package]]
 name = "salvo_macros"
 version = "0.74.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d1e370bd2cd0ad52be3518350c43f2b94fccbb136519a9547269df1c9a5329d"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1975,7 +2007,7 @@ checksum = "fb3aa78ecda1ebc9ec9847d5d3aba7d618823446a049ba2491940506da6e2782"
 dependencies = [
  "log",
  "serde",
- "thiserror",
+ "thiserror 1.0.68",
  "xml-rs",
 ]
 
@@ -2068,7 +2100,7 @@ checksum = "adc4e5204eb1910f40f9cfa375f6f05b68c3abac4b6fd879c8ff5e7ae8a0a085"
 dependencies = [
  "num-bigint",
  "num-traits",
- "thiserror",
+ "thiserror 1.0.68",
  "time",
 ]
 
@@ -2203,7 +2235,16 @@ version = "1.0.68"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "02dd99dc800bbb97186339685293e1cc5d9df1f8fae2d0aecd9ff1c77efea892"
 dependencies = [
- "thiserror-impl",
+ "thiserror-impl 1.0.68",
+]
+
+[[package]]
+name = "thiserror"
+version = "2.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c006c85c7651b3cf2ada4584faa36773bd07bac24acfb39f3c431b36d7e667aa"
+dependencies = [
+ "thiserror-impl 2.0.3",
 ]
 
 [[package]]
@@ -2211,6 +2252,17 @@ name = "thiserror-impl"
 version = "1.0.68"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7c61ec9a6f64d2793d8a45faba21efbe3ced62a886d44c36a009b2b519b4c7e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.87",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f077553d607adc1caf65430528a576c757a71ed73944b66ebb58ef2bbd243568"
 dependencies = [
  "proc-macro2",
  "quote",

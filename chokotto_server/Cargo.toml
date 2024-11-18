@@ -8,6 +8,8 @@ tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
-salvo = { version = "0.74.1", features = ["anyhow", "quinn"] }
+clap = { workspace = true }
+#salvo = { version = "0.74.1", features = ["anyhow", "quinn"] }
+salvo = { path = "../../salvo/crates/salvo", features = ["anyhow", "quinn"] }
 dirs = "5.0.1"
 local-ip-address = "0.6.3"

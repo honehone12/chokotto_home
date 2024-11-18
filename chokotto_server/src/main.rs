@@ -1,8 +1,22 @@
 use std::{net::IpAddr, path::{Path, PathBuf}};
 use tokio::fs::{self, File};
 use salvo::{conn::rustls::{Keycert, RustlsConfig}, prelude::*};
+use clap::Parser;
 use tracing::{info, warn};
 use anyhow::bail;
+
+#[derive(Parser)]
+#[command(version)]
+struct Args {
+    #[arg(long = "no-https")]
+    no_https: bool,
+    #[arg(long)]
+    http3: bool,
+    #[arg(long = "cert-path", default_value = "../cert/server.crt")]
+    cert_path: PathBuf,
+    #[arg(long = "key-path", default_value = "../cert/server.key")]
+    key_path: PathBuf
+}
 
 async fn check_save_dir() -> anyhow::Result<()> {
     let Some(mut download_dir) = dirs::home_dir() else {
@@ -28,7 +42,8 @@ fn local_listen_at() -> anyhow::Result<(IpAddr, u16)> {
 }
 
 #[handler]
-async fn index(res: &mut Response) {
+async fn index(req: &mut Request, res: &mut Response) {
+    info!("request version {:?}", req.version());
     res.render(env!("CARGO_PKG_VERSION"));
 }
 
@@ -110,6 +125,8 @@ fn validate_file_name(name: &str) -> anyhow::Result<()> {
 
 #[handler]
 async fn upload(req: &mut Request, res: &mut Response) {
+    info!("request version {:?}", req.version());
+
     const FILE_KEY: &str = "file";
     let Some(file) = req.file(FILE_KEY).await else {
         warn!("no files were attached");
@@ -158,8 +175,13 @@ async fn upload(req: &mut Request, res: &mut Response) {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    
-    tracing_subscriber::fmt::init();    
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .init();
+    let args = Args::parse();
+    if args.no_https && args.http3 {
+        bail!("http3 can not be used without https");
+    }
 
     check_save_dir().await?;
 
@@ -167,17 +189,30 @@ async fn main() -> anyhow::Result<()> {
         .push(Router::with_path("upload").post(upload));
 
     let listen_at = local_listen_at()?;
-    let cert = include_bytes!("../../cert/server.crt");
-    let key = include_bytes!("../../cert/server.key");
+
+    if args.no_https {
+        let tcp_listener = TcpListener::new(listen_at).bind().await;
+        Server::new(tcp_listener).serve(router).await;
+
+        return Ok(())
+    }
+
+    let cert = fs::read(args.cert_path).await?;
+    let key = fs::read(args.key_path).await?;
     let key_cert = Keycert::new().cert(cert).key(key);
     let tls_config = RustlsConfig::new(key_cert);
     let tls_listener = TcpListener::new(listen_at).rustls(tls_config.clone());
-    let quic_config = tls_config.build_quinn_config()?;
-    let quic_listenr = QuinnListener::new(quic_config, listen_at)
-        .join(tls_listener)
-        .bind().await;
 
-    Server::new(quic_listenr).serve(router).await;
+    if args.http3 {
+        let quic_config = tls_config.build_quinn_config()?;
+        let quic_listenr = QuinnListener::new(quic_config, listen_at)
+            .join(tls_listener)
+            .bind().await;
+        Server::new(quic_listenr).serve(router).await;
+    } else {
+        let tls_listener = tls_listener.bind().await;
+        Server::new(tls_listener).serve(router).await;
+    }
 
     Ok(())
 }
@@ -189,7 +224,7 @@ mod test {
     #[test]
     fn test_validate_file_name() {
         assert!(validate_file_name("my_pic_11_14.jpg").is_ok());
-        assert!("!#$%&'()-=~^|@`{[]}:*;+<>,/?\"\"\\ あいアイ甲乙".chars().all(|c| {
+        assert!("!#$%&'()-=~^|@`{[]}:*;+<>,/?\"\\ あいアイ愛".chars().all(|c| {
             validate_file_name(&c.to_string()).is_err()
         }));
     }
