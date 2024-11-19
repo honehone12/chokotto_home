@@ -1,5 +1,5 @@
 use std::{net::IpAddr, path::{Path, PathBuf}, str::FromStr};
-use reqwest::{multipart, Certificate, StatusCode};
+use reqwest::{multipart, Certificate, StatusCode, Version};
 use tokio::fs::{self, File};
 use clap::Parser;
 use anyhow::bail;
@@ -82,7 +82,18 @@ async fn main() -> anyhow::Result<()> {
     }
     let client = client_builder.build()?;
 
-    let res = client.get(url.clone()).send().await?;
+    let mut req = client.get(url.clone());
+    req = if cli.no_https {
+        req.version(Version::HTTP_11)
+    } else {
+        if cli.http3 {
+            req.version(Version::HTTP_3)
+        } else {
+            req.version(Version::HTTP_2)
+        }
+    };
+
+    let res = req.send().await?;
     let status = res.status();     
     if !matches!(status, StatusCode::OK) {
         bail!("request error with status code {status}");
@@ -103,9 +114,18 @@ async fn main() -> anyhow::Result<()> {
     const FILE_KEY: &str = "file";
     let form = multipart::Form::new().file(FILE_KEY, cli.file).await?;
     url.set_path("upload");
-    let res = client.post(url)
-        .multipart(form)
-        .send().await?;
+    let mut req = client.post(url).multipart(form);
+    req = if cli.no_https {
+        req.version(Version::HTTP_11)
+    } else {
+        if cli.http3 {
+            req.version(Version::HTTP_3)
+        } else {
+            req.version(Version::HTTP_2)
+        }
+    };
+    
+    let res = req.send().await?;
 
     info!("response version {:?} ", res.version());
     let status = res.status();
