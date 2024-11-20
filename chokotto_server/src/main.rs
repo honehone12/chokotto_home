@@ -118,6 +118,10 @@ fn validate_file_name(name: &str) -> anyhow::Result<()> {
     }) {
         bail!("invalid file name");
     }
+
+    if name.find("..").is_some() {
+        bail!("invalid file name");
+    }
     
     Ok(())
 }
@@ -221,8 +225,9 @@ mod test {
     #[test]
     fn test_validate_file_name() {
         assert!(validate_file_name("my_pic_11_14.jpg").is_ok());
-        assert!("!#$%&'()-=~^|@`{[]}:*;+<>,/?\"\\ あいアイ愛".chars().all(|c| {
+        assert!("!#$%&'()-=~^|@`{[]}:*;+<>,/?\"\\ あいアイ愛¥".chars().all(|c| {
             validate_file_name(&c.to_string()).is_err()
         }));
+        assert!(validate_file_name("..like...this").is_err());
     }
 }
