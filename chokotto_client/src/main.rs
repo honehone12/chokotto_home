@@ -106,7 +106,8 @@ async fn upload_file(
     const FILE_KEY: &str = "file";
     let form = multipart::Form::new().file(FILE_KEY, file).await?;
     let mut url = base_url.into_url()?;
-    url.set_path("upload");
+    const UPLOAD_PATH: &str = "upload";
+    url.set_path(UPLOAD_PATH);
     
     let mut req = client.post(url).multipart(form);
     match req_version {
@@ -118,16 +119,16 @@ async fn upload_file(
     let res = req.send().await?;
 
     let status = res.status();
+    let version = res.version();
     let msg = match res.text().await {
         Ok(m) => m,
         Err(e) => bail!("invalid response: {e}")
     };
-
     if !matches!(status, StatusCode::OK) {
         bail!("{msg}, request failed with status code {status}");
     }
 
-    info!("{msg}, with status code {status}");
+    info!("{msg}, with status code {status}, http version {version:?}");
     Ok(())
 }
 

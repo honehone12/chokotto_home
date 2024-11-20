@@ -42,8 +42,7 @@ fn local_listen_at() -> anyhow::Result<(IpAddr, u16)> {
 }
 
 #[handler]
-async fn index(req: &mut Request, res: &mut Response) {
-    info!("request version {:?}", req.version());
+async fn index(res: &mut Response) {
     res.render(env!("CARGO_PKG_VERSION"));
 }
 
@@ -125,8 +124,6 @@ fn validate_file_name(name: &str) -> anyhow::Result<()> {
 
 #[handler]
 async fn upload(req: &mut Request, res: &mut Response) {
-    info!("request version {:?}", req.version());
-
     const FILE_KEY: &str = "file";
     let Some(file) = req.file(FILE_KEY).await else {
         warn!("no files were attached");
@@ -163,7 +160,7 @@ async fn upload(req: &mut Request, res: &mut Response) {
         
     match tokio::fs::copy(tmp_path, &dest).await {
         Ok(n) =>  {
-            info!("created {dest:?} {n}bytes");
+            info!("created {dest:?} {n}bytes, http version {:?}", req.version());
             res.render("ok");
         }
         Err(e) =>  {
