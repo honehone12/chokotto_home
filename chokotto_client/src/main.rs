@@ -1,5 +1,9 @@
-use std::{net::IpAddr, path::{Path, PathBuf}, str::FromStr};
-use reqwest::{multipart, Certificate, StatusCode, Version};
+use std::{
+    net::IpAddr, 
+    path::{Path, PathBuf}, 
+    str::FromStr
+};
+use reqwest::{multipart, Certificate, Client, IntoUrl, StatusCode, Version};
 use tokio::fs::{self, File};
 use clap::Parser;
 use anyhow::bail;
@@ -10,7 +14,7 @@ use url::Url;
 #[command(version)]
 struct Cli {
     #[arg(short, long)]
-    file: String,
+    file: PathBuf,
     #[arg(short, long)]
     address: String,
     #[arg(long = "no-https")]
@@ -19,6 +23,13 @@ struct Cli {
     http3: bool,
     #[arg(long = "cert-path", default_value = "../cert/server.crt")]
     cert_path: PathBuf
+}
+
+#[derive(Clone, Copy)]
+enum RequestVersion {
+    Http3,
+    Http2,
+    Http1NoTls
 }
 
 async fn check_file(path: impl AsRef<Path>) -> anyhow::Result<()> {
@@ -38,12 +49,12 @@ async fn check_file(path: impl AsRef<Path>) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn make_url(ip_addr: &str, no_tls: bool) -> anyhow::Result<Url> {
+fn make_url(ip_addr: &str, no_https: bool) -> anyhow::Result<Url> {
     _ = IpAddr::from_str(ip_addr)?;
     
     const HTTP: &str = "http";
     const HTTPS: &str = "https";
-    let scheme = match no_tls {
+    let scheme = match no_https {
         true => HTTP,
         false => HTTPS
     };
@@ -53,6 +64,69 @@ fn make_url(ip_addr: &str, no_tls: bool) -> anyhow::Result<Url> {
     let url = Url::parse(&s)?;
 
     Ok(url)
+}
+
+async fn check_server_version(
+    client: &Client,
+    base_url: impl IntoUrl, 
+    req_version: RequestVersion
+) -> anyhow::Result<()> {
+    let mut req = client.get(base_url);
+    match req_version {
+        RequestVersion::Http3 => req = req.version(Version::HTTP_3),
+        RequestVersion::Http2 => req = req.version(Version::HTTP_2),
+        RequestVersion::Http1NoTls => (),
+    };
+
+    let res = req.send().await?;
+    let status = res.status();
+
+    let msg = match res.text().await {
+        Ok(m) => m,
+        Err(e) => bail!("invalid response: {e}")
+    };
+
+    if !matches!(status, StatusCode::OK) {
+        bail!("{msg}, version check failed with {status}");
+    }
+
+    if msg != env!("CARGO_PKG_VERSION") {
+        bail!("server version is different from client");
+    }
+
+    Ok(())
+}
+
+async fn upload_file(
+    client: &Client,
+    mut base_url: Url,
+    req_version: RequestVersion,
+    file: impl AsRef<Path> 
+) -> anyhow::Result<()> {
+    const FILE_KEY: &str = "file";
+    let form = multipart::Form::new().file(FILE_KEY, file).await?;
+    base_url.set_path("upload");
+    let mut req = client.post(base_url).multipart(form);
+    match req_version {
+        RequestVersion::Http3 => req = req.version(Version::HTTP_3),
+        RequestVersion::Http2 => req = req.version(Version::HTTP_2),
+        RequestVersion::Http1NoTls => (),
+    }
+
+    let res = req.send().await?;
+
+    let status = res.status();
+    let msg = match res.text().await {
+        Ok(m) => m,
+        Err(e) => bail!("invalid response: {e}")
+    };
+
+    if !matches!(status, StatusCode::OK) {
+        bail!("{msg}, request failed with status code {status}");
+    }
+
+    info!("{msg}, with status code {status}");
+    Ok(())
 }
 
 #[tokio::main]
@@ -66,7 +140,6 @@ async fn main() -> anyhow::Result<()> {
     }
 
     check_file(&cli.file).await?;
-    let mut url = make_url(&cli.address, cli.no_https)?; 
 
     let mut client_builder = reqwest::Client::builder();
     if !cli.no_https {
@@ -74,65 +147,25 @@ async fn main() -> anyhow::Result<()> {
         let cert = Certificate::from_pem(&cert)?;
         client_builder = client_builder.add_root_certificate(cert);
         
-        if cli.http3 {
-            client_builder = client_builder.http3_prior_knowledge();
-        } else {
-            client_builder = client_builder.http2_prior_knowledge();
+        client_builder = match cli.http3 {
+            true => client_builder.http3_prior_knowledge(),
+            false => client_builder.http2_prior_knowledge() 
         }
     }
     let client = client_builder.build()?;
 
-    let mut req = client.get(url.clone());
-    req = if cli.no_https {
-        req.version(Version::HTTP_11)
+    let base_url = make_url(&cli.address, cli.no_https)?; 
+    let req_version = if cli.http3 {
+        RequestVersion::Http3
+    } else if !cli.no_https {
+        RequestVersion::Http2
     } else {
-        if cli.http3 {
-            req.version(Version::HTTP_3)
-        } else {
-            req.version(Version::HTTP_2)
-        }
-    };
+        RequestVersion::Http1NoTls
+    };    
 
-    let res = req.send().await?;
-    let status = res.status();     
-    if !matches!(status, StatusCode::OK) {
-        bail!("request error with status code {status}");
-    }
-
-    info!("response version {:?} ", res.version());
-
-    let msg = match res.text().await {
-        Ok(m) => m,
-        Err(e) => {
-            bail!("could not get server version, {e}")
-        }
-    };
-    if msg != env!("CARGO_PKG_VERSION") {
-        bail!("server version is different from client");
-    }
+    check_server_version(&client, base_url.clone(), req_version).await?;    
     
-    const FILE_KEY: &str = "file";
-    let form = multipart::Form::new().file(FILE_KEY, cli.file).await?;
-    url.set_path("upload");
-    let mut req = client.post(url).multipart(form);
-    req = if cli.no_https {
-        req.version(Version::HTTP_11)
-    } else {
-        if cli.http3 {
-            req.version(Version::HTTP_3)
-        } else {
-            req.version(Version::HTTP_2)
-        }
-    };
-    
-    let res = req.send().await?;
-
-    info!("response version {:?} ", res.version());
-    let status = res.status();
-    match res.text().await {
-        Ok(msg) => info!("{msg}, request has done with status code {status}"),
-        Err(_) => info!("request has done with status code {status}")
-    }
+    upload_file(&client, base_url, req_version, cli.file).await?;
 
     Ok(())
 }
