@@ -1,7 +1,8 @@
 use std::{
     net::IpAddr, 
     path::{Path, PathBuf}, 
-    str::FromStr
+    str::FromStr, 
+    time::SystemTime
 };
 use reqwest::{multipart, Certificate, Client, IntoUrl, StatusCode, Version};
 use tokio::fs::{self, File};
@@ -164,11 +165,15 @@ async fn main() -> anyhow::Result<()> {
         RequestVersion::Http2
     } else {
         RequestVersion::Http1NoTls
-    };    
+    };
+
+    let start = SystemTime::now();    
 
     check_server_version(&client, base_url.clone(), req_version).await?;    
     
     upload_file(&client, base_url, req_version, cli.file).await?;
 
+    let mil = SystemTime::now().duration_since(start)?.as_millis(); 
+    info!("operation took {mil}milsecs");
     Ok(())
 }
