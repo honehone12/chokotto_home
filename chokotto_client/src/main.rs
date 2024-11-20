@@ -99,14 +99,16 @@ async fn check_server_version(
 
 async fn upload_file(
     client: &Client,
-    mut base_url: Url,
+    base_url: impl IntoUrl,
     req_version: RequestVersion,
     file: impl AsRef<Path> 
 ) -> anyhow::Result<()> {
     const FILE_KEY: &str = "file";
     let form = multipart::Form::new().file(FILE_KEY, file).await?;
-    base_url.set_path("upload");
-    let mut req = client.post(base_url).multipart(form);
+    let mut url = base_url.into_url()?;
+    url.set_path("upload");
+    
+    let mut req = client.post(url).multipart(form);
     match req_version {
         RequestVersion::Http3 => req = req.version(Version::HTTP_3),
         RequestVersion::Http2 => req = req.version(Version::HTTP_2),
