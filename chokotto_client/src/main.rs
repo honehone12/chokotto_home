@@ -9,7 +9,7 @@ use reqwest::{
     IntoUrl, StatusCode, Version
 };
 use tokio::fs::{self, File};
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use anyhow::bail;
 use tracing::info;
 use url::Url;
@@ -17,23 +17,22 @@ use url::Url;
 #[derive(Parser)]
 #[command(version)]
 struct Cli {
+    #[arg(value_enum, default_value_t = HttpMajor::Http3)]
+    http_major: HttpMajor,
     #[arg(short, long)]
     file: PathBuf,
     #[arg(short, long)]
     address: String,
-    #[arg(long = "no-https")]
-    no_https: bool,
-    #[arg(long)]
-    http3: bool,
     #[arg(long = "cert-path", default_value = "../cert/server.crt")]
     cert_path: PathBuf
 }
 
-#[derive(Clone, Copy)]
-enum RequestVersion {
+#[derive(Clone, Copy, ValueEnum)]
+enum HttpMajor {
     Http3,
     Http2,
-    Http1NoTls
+    Http1,
+    NoHttps
 }
 
 async fn check_file(path: impl AsRef<Path>) -> anyhow::Result<()> {
@@ -53,14 +52,13 @@ async fn check_file(path: impl AsRef<Path>) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn make_url(ip_addr: &str, no_https: bool) -> anyhow::Result<Url> {
+fn make_url(ip_addr: &str, http_major: HttpMajor) -> anyhow::Result<Url> {
+    // just want check ip_addr can parsed as IpAddr
     _ = IpAddr::from_str(ip_addr)?;
     
-    const HTTP: &str = "http";
-    const HTTPS: &str = "https";
-    let scheme = match no_https {
-        true => HTTP,
-        false => HTTPS
+    let scheme = match http_major {
+        HttpMajor::NoHttps => "http",
+        _ => "https"
     };
 
     const TARGET_PORT: u16 = 4545;
@@ -73,14 +71,13 @@ fn make_url(ip_addr: &str, no_https: bool) -> anyhow::Result<Url> {
 async fn check_server_version(
     client: &Client,
     base_url: impl IntoUrl, 
-    req_version: RequestVersion
+    http_major: HttpMajor
 ) -> anyhow::Result<()> {
-    let mut req = client.get(base_url);
-    match req_version {
-        RequestVersion::Http3 => req = req.version(Version::HTTP_3),
-        RequestVersion::Http2 => req = req.version(Version::HTTP_2),
-        RequestVersion::Http1NoTls => (),
-    };
+    let req = client.get(base_url).version(match http_major {
+        HttpMajor::Http3 => Version::HTTP_3,
+        HttpMajor::Http2 => Version::HTTP_2,
+        _ => Version::HTTP_11
+    });
 
     let res = req.send().await?;
     let status = res.status();
@@ -104,7 +101,7 @@ async fn check_server_version(
 async fn upload_file(
     client: &Client,
     base_url: impl IntoUrl,
-    req_version: RequestVersion,
+    http_major: HttpMajor,
     file: impl AsRef<Path> 
 ) -> anyhow::Result<()> {
     const FILE_KEY: &str = "file";
@@ -113,12 +110,13 @@ async fn upload_file(
     const UPLOAD_PATH: &str = "upload";
     url.set_path(UPLOAD_PATH);
     
-    let mut req = client.post(url).multipart(form);
-    match req_version {
-        RequestVersion::Http3 => req = req.version(Version::HTTP_3),
-        RequestVersion::Http2 => req = req.version(Version::HTTP_2),
-        RequestVersion::Http1NoTls => (),
-    }
+    let req = client.post(url)
+        .multipart(form)
+        .version(match http_major {
+            HttpMajor::Http3 => Version::HTTP_3,
+            HttpMajor::Http2 => Version::HTTP_2,
+            _ => Version::HTTP_11
+        });
 
     let res = req.send().await?;
 
@@ -142,39 +140,29 @@ async fn main() -> anyhow::Result<()> {
         .with_max_level(tracing::Level::INFO)
         .init();
     let cli = Cli::parse();
-    if cli.no_https && cli.http3 {
-        bail!("http3 can not be used without https");
-    }
 
     check_file(&cli.file).await?;
 
     let mut client_builder = reqwest::Client::builder();
-    if !cli.no_https {
+    if !matches!(cli.http_major, HttpMajor::NoHttps) {
         let cert = fs::read(cli.cert_path).await?;
         let cert = Certificate::from_pem(&cert)?;
         client_builder = client_builder.add_root_certificate(cert);
-        
-        client_builder = match cli.http3 {
-            true => client_builder.http3_prior_knowledge(),
-            false => client_builder.http2_prior_knowledge() 
-        }
     }
+    client_builder = match cli.http_major {
+        HttpMajor::Http3 => client_builder.http3_prior_knowledge(),
+        HttpMajor::Http2 => client_builder.http2_prior_knowledge(),
+        _ => client_builder.http1_only(),
+    };
     let client = client_builder.build()?;
 
-    let base_url = make_url(&cli.address, cli.no_https)?; 
-    let req_version = if cli.http3 {
-        RequestVersion::Http3
-    } else if !cli.no_https {
-        RequestVersion::Http2
-    } else {
-        RequestVersion::Http1NoTls
-    };
+    let base_url = make_url(&cli.address, cli.http_major)?; 
 
     let start_at = SystemTime::now();  
 
-    check_server_version(&client, base_url.clone(), req_version).await?;    
+    check_server_version(&client, base_url.clone(), cli.http_major).await?;    
     
-    upload_file(&client, base_url, req_version, cli.file).await?;
+    upload_file(&client, base_url, cli.http_major, cli.file).await?;
 
     let mil = SystemTime::now().duration_since(start_at)?.as_millis(); 
     info!("operation took {mil}milsecs");
