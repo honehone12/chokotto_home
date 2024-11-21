@@ -167,13 +167,13 @@ async fn main() -> anyhow::Result<()> {
         RequestVersion::Http1NoTls
     };
 
-    let start = SystemTime::now();    
+    let start_at = SystemTime::now();  
 
     check_server_version(&client, base_url.clone(), req_version).await?;    
     
     upload_file(&client, base_url, req_version, cli.file).await?;
 
-    let mil = SystemTime::now().duration_since(start)?.as_millis(); 
+    let mil = SystemTime::now().duration_since(start_at)?.as_millis(); 
     info!("operation took {mil}milsecs");
     Ok(())
 }
