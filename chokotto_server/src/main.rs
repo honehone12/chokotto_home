@@ -1,6 +1,12 @@
-use std::{net::IpAddr, path::{Path, PathBuf}};
+use std::{
+    net::IpAddr, 
+    path::{Path, PathBuf}
+};
 use tokio::fs::{self, File};
-use salvo::{conn::rustls::{Keycert, RustlsConfig}, prelude::*};
+use salvo::{
+    conn::rustls::{Keycert, RustlsConfig}, 
+    prelude::*
+};
 use clap::Parser;
 use tracing::{info, warn};
 use anyhow::bail;
@@ -10,8 +16,6 @@ use anyhow::bail;
 struct Args {
     #[arg(long = "no-https")]
     no_https: bool,
-    #[arg(long)]
-    http3: bool,
     #[arg(long = "cert-path", default_value = "../cert/server.crt")]
     cert_path: PathBuf,
     #[arg(long = "key-path", default_value = "../cert/server.key")]
@@ -180,9 +184,6 @@ async fn main() -> anyhow::Result<()> {
         .with_max_level(tracing::Level::INFO)
         .init();
     let args = Args::parse();
-    if args.no_https && args.http3 {
-        bail!("http3 can not be used without https");
-    }
 
     check_save_dir().await?;
 
@@ -203,17 +204,11 @@ async fn main() -> anyhow::Result<()> {
     let key_cert = Keycert::new().cert(cert).key(key);
     let tls_config = RustlsConfig::new(key_cert);
     let tls_listener = TcpListener::new(listen_at).rustls(tls_config.clone());
-
-    if args.http3 {
-        let quic_config = tls_config.build_quinn_config()?;
-        let quic_listenr = QuinnListener::new(quic_config, listen_at)
-            .join(tls_listener)
-            .bind().await;
-        Server::new(quic_listenr).serve(router).await;
-    } else {
-        let tls_listener = tls_listener.bind().await;
-        Server::new(tls_listener).serve(router).await;
-    }
+    let quic_config = tls_config.build_quinn_config()?;
+    let quic_listenr = QuinnListener::new(quic_config, listen_at)
+        .join(tls_listener)
+        .bind().await;
+    Server::new(quic_listenr).serve(router).await;
 
     Ok(())
 }

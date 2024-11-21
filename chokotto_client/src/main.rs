@@ -4,7 +4,10 @@ use std::{
     str::FromStr, 
     time::SystemTime
 };
-use reqwest::{multipart, Certificate, Client, IntoUrl, StatusCode, Version};
+use reqwest::{
+    multipart, Certificate, Client, 
+    IntoUrl, StatusCode, Version
+};
 use tokio::fs::{self, File};
 use clap::Parser;
 use anyhow::bail;
