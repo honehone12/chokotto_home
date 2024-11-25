@@ -5,6 +5,7 @@ use std::{
 use tokio::fs::{self, File};
 use salvo::{
     conn::rustls::{Keycert, RustlsConfig}, 
+    serve_static::StaticDir,
     prelude::*
 };
 use clap::Parser;
@@ -22,22 +23,33 @@ struct Args {
     key_path: PathBuf
 }
 
-async fn check_save_dir() -> anyhow::Result<()> {
-    let Some(mut download_dir) = dirs::home_dir() else {
+async fn check_dir(dir_name: &str) -> anyhow::Result<PathBuf> {
+    let Some(mut dir) = dirs::home_dir() else {
         bail!("could not find home dir");
     };
 
-    const DIR_NAME: &str = "Downloads";
-    download_dir.push(DIR_NAME);
-
-    if !fs::try_exists(&download_dir).await? {
-        info!("creating '{download_dir:?}' directory");
-        fs::create_dir(&download_dir).await?;
+    dir.push(dir_name);
+    if !fs::try_exists(&dir).await? {
+        info!("creating {dir:?} directory");
+        fs::create_dir(&dir).await?;
     }
 
-    Ok(())
+    Ok(dir)
 }
 
+#[inline]
+async fn check_save_dir() -> anyhow::Result<PathBuf> {
+    const SAVE_DIR: &str = "Downloads";
+    check_dir(SAVE_DIR).await
+}
+
+#[inline]
+async fn check_public_dir() -> anyhow::Result<PathBuf> {
+    const PUB_DIR: &str = "Public";
+    check_dir(PUB_DIR).await
+}
+
+#[inline]
 fn local_listen_at() -> anyhow::Result<(IpAddr, u16)> {
     let local_ip = local_ip_address::local_ip()?;
     const LISTEN_PORT: u16 = 4545;
@@ -51,9 +63,11 @@ async fn index(res: &mut Response) {
 }
 
 #[inline]
-fn bad_form(res: &mut Response) {
+fn bad_form(res: &mut Response, warn: &str) -> anyhow::Result<()> {
+    warn!(warn);
     res.status_code(StatusCode::BAD_REQUEST);
     res.render("bad http form");
+    Ok(())
 }
 
 async fn make_dest(file_name: &str) -> anyhow::Result<PathBuf> {
@@ -131,49 +145,40 @@ fn validate_file_name(name: &str) -> anyhow::Result<()> {
 }
 
 #[handler]
-async fn upload(req: &mut Request, res: &mut Response) {
+async fn upload(req: &mut Request, res: &mut Response) 
+-> anyhow::Result<()> {
     const FILE_KEY: &str = "file";
     let Some(file) = req.file(FILE_KEY).await else {
-        warn!("no files were attached");
-        bad_form(res);    
-        return;
+        return bad_form(res, "no files were attached");
     };
 
     let tmp_path = file.path();
     if let Err(e) = validate_file(tmp_path).await {
-        warn!("{e}");
-        bad_form(res);
-        return;
+        return bad_form(res, &e.to_string());
     }
 
     let Some(file_name) = file.name() else {
-        warn!("could not find a file name");
-        bad_form(res);
-        return;
+        return bad_form(res, "could not find a file name");
     };
     if let Err(e) = validate_file_name(file_name) {
-        warn!("{e}");
-        bad_form(res);
-        return;
+        return bad_form(res, &e.to_string());
     }
     
     let dest = match make_dest(file_name).await {
         Ok(p) => p,
         Err(e) => {
-            warn!("{e}");
-            bad_form(res);
-            return;
+            return bad_form(res, &e.to_string());
         }
     };
-        
+
     match tokio::fs::copy(tmp_path, &dest).await {
         Ok(n) =>  {
             info!("created {dest:?} {n}bytes, http version {:?}", req.version());
             res.render("ok");
+            Ok(())
         }
         Err(e) =>  {
-            warn!("{e}");
-            bad_form(res);
+           return bad_form(res, &e.to_string());
         }
     }
 }
@@ -186,9 +191,16 @@ async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     check_save_dir().await?;
+    let pub_dir = check_public_dir().await?;
 
     let router = Router::new().get(index)
-        .push(Router::with_path("upload").post(upload));
+        .push(Router::with_path("uploads").post(upload))
+        .push(
+            Router::with_path("downloads/<**file>").get(
+                StaticDir::new(pub_dir)
+                    .include_dot_files(true)
+            )
+        );
 
     let listen_at = local_listen_at()?;
 

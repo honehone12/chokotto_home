@@ -136,6 +136,7 @@ async fn upload_file(
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let start_at = SystemTime::now();
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .init();
@@ -157,8 +158,6 @@ async fn main() -> anyhow::Result<()> {
     let client = client_builder.build()?;
 
     let base_url = make_url(&cli.address, cli.http_major)?; 
-
-    let start_at = SystemTime::now();  
 
     check_server_version(&client, base_url.clone(), cli.http_major).await?;    
     
