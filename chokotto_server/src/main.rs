@@ -194,12 +194,14 @@ async fn main() -> anyhow::Result<()> {
     let pub_dir = check_public_dir().await?;
 
     const UPLOAD_ROUTE: &str = "upload";
-    const DOWNLOAD_ROUTE: &str = "download/<**file>";
+    const DOWNLOAD_ROUTE: &str = "download";
+    const ACCEPTABLE_FILE: &str = "<**file>";
     let router = Router::new().get(index)
         .push(Router::with_path(UPLOAD_ROUTE).post(upload))
         .push(
-            Router::with_path(DOWNLOAD_ROUTE)
-                .get(StaticDir::new(pub_dir).include_dot_files(true))
+            Router::with_path(format!("{DOWNLOAD_ROUTE}/{ACCEPTABLE_FILE}")).get(
+                StaticDir::new(pub_dir).include_dot_files(true)
+            )
         );
 
     let listen_at = local_listen_at()?;
