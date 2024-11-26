@@ -8,8 +8,9 @@ use reqwest::{
     multipart, Certificate, Client, 
     IntoUrl, StatusCode, Version
 };
-use tokio::fs::{self, File};
-use clap::{Parser, ValueEnum};
+use tokio::{fs::{self, File}, io::{AsyncWriteExt, BufWriter}};
+use futures_util::StreamExt;
+use clap::{Parser, ValueEnum, Subcommand};
 use anyhow::bail;
 use tracing::info;
 use url::Url;
@@ -17,14 +18,26 @@ use url::Url;
 #[derive(Parser)]
 #[command(version)]
 struct Cli {
-    #[arg(value_enum, default_value_t = HttpMajor::Http3)]
-    http_major: HttpMajor,
-    #[arg(short, long)]
-    file: PathBuf,
+    #[command(subcommand)]
+    command: Command,
     #[arg(short, long)]
     address: String,
+    #[arg(value_enum, default_value_t = HttpMajor::Http3)]
+    http_major: HttpMajor,
     #[arg(long = "cert-path", default_value = "../cert/server.crt")]
     cert_path: PathBuf
+}
+
+#[derive(Subcommand, Clone, Debug)]
+enum Command {
+    Upload {
+        #[arg(short, long)]
+        file: PathBuf
+    },
+    Download {
+        #[arg(short, long)]
+        file: PathBuf
+    }
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -52,7 +65,7 @@ async fn check_file(path: impl AsRef<Path>) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn make_url(ip_addr: &str, http_major: HttpMajor) -> anyhow::Result<Url> {
+fn make_base_url(ip_addr: &str, http_major: HttpMajor) -> anyhow::Result<Url> {
     // just want check ip_addr can parsed as IpAddr
     _ = IpAddr::from_str(ip_addr)?;
     
@@ -104,6 +117,8 @@ async fn upload_file(
     http_major: HttpMajor,
     file: impl AsRef<Path> 
 ) -> anyhow::Result<()> {
+    check_file(&file).await?;
+
     const FILE_KEY: &str = "file";
     let form = multipart::Form::new().file(FILE_KEY, file).await?;
     let mut url = base_url.into_url()?;
@@ -134,6 +149,65 @@ async fn upload_file(
     Ok(())
 }
 
+async fn download_file(
+    client: &Client,
+    base_url: impl IntoUrl,
+    http_major: HttpMajor,
+    file_name: &str
+) -> anyhow::Result<()> {
+    if fs::try_exists(file_name).await? {
+        bail!("file already exists");
+    }
+
+    let mut url = base_url.into_url()?;
+    const DOWNLOAD_PATH: &str = "download"; 
+    url.set_path(&format!("{DOWNLOAD_PATH}/{file_name}"));
+
+    let req = client.get(url).version(match http_major {
+        HttpMajor::Http3 => Version::HTTP_3,
+        HttpMajor::Http2 => Version::HTTP_2,
+        _ => Version::HTTP_11
+    });
+
+    let res = req.send().await?;
+    let status = res.status();
+    if !matches!(status, StatusCode::OK) {
+        bail!("could not find a file");
+    }
+    
+    let version = res.version();
+    let Some(content_type) = res.headers().get("content-type") else {
+        bail!("invalid response header");
+    };
+    let content_type = match content_type.to_str() {
+        Ok(s) => s.to_string(),
+        Err(e) => bail!("invalid response header: {e}")
+    };
+    
+    let mut read_stream = res.bytes_stream();
+
+    let file = File::create_new(file_name).await?;
+    let mut write_stream = BufWriter::new(file);
+    let mut written = 0;
+
+    // while let Some(chunk) = res.chunk().await? {
+    //     written += write_stream.write(&chunk).await?;
+    // }
+
+    while let Some(frame) = read_stream.next().await{
+        written += write_stream.write(&frame?).await?;
+    }
+
+    write_stream.flush().await?;
+    info!(
+        "created {file_name} {written}bytes, \
+        content type {content_type}, \
+        http version {version:?}"
+    );
+    
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let start_at = SystemTime::now();
@@ -141,8 +215,6 @@ async fn main() -> anyhow::Result<()> {
         .with_max_level(tracing::Level::INFO)
         .init();
     let cli = Cli::parse();
-
-    check_file(&cli.file).await?;
 
     let mut client_builder = reqwest::Client::builder();
     if !matches!(cli.http_major, HttpMajor::NoHttps) {
@@ -156,12 +228,21 @@ async fn main() -> anyhow::Result<()> {
         _ => client_builder.http1_only(),
     };
     let client = client_builder.build()?;
+    let base_url = make_base_url(&cli.address, cli.http_major)?; 
 
-    let base_url = make_url(&cli.address, cli.http_major)?; 
+    check_server_version(&client, base_url.clone(), cli.http_major).await?;
 
-    check_server_version(&client, base_url.clone(), cli.http_major).await?;    
-    
-    upload_file(&client, base_url, cli.http_major, cli.file).await?;
+    match cli.command {
+        Command::Upload { file } => {
+            upload_file(&client, base_url, cli.http_major, file).await?;
+        }
+        Command::Download { file } => {
+            let Some(file) = file.to_str() else {
+                bail!("invalid file name")
+            };
+            download_file(&client, base_url, cli.http_major, file).await?;
+        }
+    }
 
     let mil = SystemTime::now().duration_since(start_at)?.as_millis(); 
     info!("operation took {mil}milsecs");

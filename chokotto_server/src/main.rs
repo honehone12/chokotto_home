@@ -193,13 +193,13 @@ async fn main() -> anyhow::Result<()> {
     check_save_dir().await?;
     let pub_dir = check_public_dir().await?;
 
+    const UPLOAD_ROUTE: &str = "upload";
+    const DOWNLOAD_ROUTE: &str = "download/<**file>";
     let router = Router::new().get(index)
-        .push(Router::with_path("uploads").post(upload))
+        .push(Router::with_path(UPLOAD_ROUTE).post(upload))
         .push(
-            Router::with_path("downloads/<**file>").get(
-                StaticDir::new(pub_dir)
-                    .include_dot_files(true)
-            )
+            Router::with_path(DOWNLOAD_ROUTE)
+                .get(StaticDir::new(pub_dir).include_dot_files(true))
         );
 
     let listen_at = local_listen_at()?;
@@ -225,9 +225,10 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 mod test {
-    #[cfg(test)]
     use super::validate_file_name;
+    use regex::Regex;
 
     #[test]
     fn test_validate_file_name() {
@@ -236,5 +237,20 @@ mod test {
             validate_file_name(&c.to_string()).is_err()
         }));
         assert!(validate_file_name("..like...this").is_err());
+    }
+
+    #[test]
+    fn test_regex_file_name() {
+        const R: &str = r"^[a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)*$";
+        let regex = match Regex::new(R) {
+            Ok(r) => r,
+            Err(e) => panic!("{e}")
+        };
+        assert!(regex.is_match("my_av_1_9.mp4"));
+        assert!(regex.is_match(".tonight.fun.av"));
+        assert!("!#$%&'()-=~^|@`{[]}:*;+<>,/?\"\\ あいアイ愛¥".chars().all(|c| {
+            !regex.is_match(&c.to_string())            
+        }));
+        assert!(!regex.is_match("..oh...good"));
     }
 }
