@@ -174,7 +174,7 @@ async fn download_file(
     if !matches!(status, StatusCode::OK) {
         bail!("could not find a file");
     }
-    
+
     let version = res.version();
     let Some(content_type) = res.headers().get("content-type") else {
         bail!("invalid response header");
@@ -184,21 +184,17 @@ async fn download_file(
         Err(e) => bail!("invalid response header: {e}")
     };
     
-    let mut read_stream = res.bytes_stream();
-
     let file = File::create_new(file_name).await?;
     let mut write_stream = BufWriter::new(file);
     let mut written = 0;
 
-    // while let Some(chunk) = res.chunk().await? {
-    //     written += write_stream.write(&chunk).await?;
-    // }
-
-    while let Some(frame) = read_stream.next().await{
+    let mut read_stream = res.bytes_stream();
+    while let Some(frame) = read_stream.next().await {
         written += write_stream.write(&frame?).await?;
     }
 
     write_stream.flush().await?;
+
     info!(
         "created {file_name} {written}bytes, \
         content type {content_type}, \
