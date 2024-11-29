@@ -24,7 +24,7 @@ struct Cli {
     address: String,
     #[arg(value_enum, default_value_t = HttpMajor::Http3)]
     http_major: HttpMajor,
-    #[arg(long = "cert-path", default_value = "../cert/server.crt")]
+    #[arg(long = "cert-path", default_value = "cert/server.crt")]
     cert_path: PathBuf
 }
 

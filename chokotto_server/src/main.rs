@@ -18,9 +18,9 @@ use anyhow::bail;
 struct Args {
     #[arg(long = "no-https")]
     no_https: bool,
-    #[arg(long = "cert-path", default_value = "../cert/server.crt")]
+    #[arg(long = "cert-path", default_value = "cert/server.crt")]
     cert_path: PathBuf,
-    #[arg(long = "key-path", default_value = "../cert/server.key")]
+    #[arg(long = "key-path", default_value = "cert/server.key")]
     key_path: PathBuf
 }
 
