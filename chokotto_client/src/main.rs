@@ -183,7 +183,7 @@ async fn download_file(
         Ok(s) => s.to_string(),
         Err(e) => bail!("invalid response header: {e}")
     };
-    
+
     let file = File::create_new(file_name).await?;
     let mut write_stream = BufWriter::new(file);
     let mut written = 0;

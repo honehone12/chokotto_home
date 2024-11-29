@@ -5,8 +5,9 @@ use std::{
 use tokio::fs::{self, File};
 use salvo::{
     conn::rustls::{Keycert, RustlsConfig}, 
-    serve_static::StaticDir,
-    prelude::*
+    prelude::*, 
+    routing::PathFilter, 
+    serve_static::StaticDir
 };
 use clap::Parser;
 use tracing::{info, warn};
@@ -195,11 +196,12 @@ async fn main() -> anyhow::Result<()> {
 
     const UPLOAD_ROUTE: &str = "upload";
     const DOWNLOAD_ROUTE: &str = "download";
-    const ACCEPTABLE_FILE: &str = "<**file>";
+    let r = regex::Regex::new(r"^[a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)*$")?;
+    PathFilter::register_wisp_regex("file", r);
     let router = Router::new().get(index)
         .push(Router::with_path(UPLOAD_ROUTE).post(upload))
         .push(
-            Router::with_path(format!("{DOWNLOAD_ROUTE}/{ACCEPTABLE_FILE}")).get(
+            Router::with_path(format!("{DOWNLOAD_ROUTE}/<**name:file>")).get(
                 StaticDir::new(pub_dir).include_dot_files(true)
             )
         );
