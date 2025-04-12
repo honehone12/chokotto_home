@@ -258,6 +258,7 @@ mod test {
             !regex.is_match(&c.to_string())            
         }));
         assert!(!regex.is_match("..oh...good"));
+        assert!(!regex.is_match("."));        
         assert!(!regex.is_match(""))
     }
 }
