@@ -245,16 +245,19 @@ mod test {
 
     #[test]
     fn test_regex_file_name() {
-        const R: &str = r"^[a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)*$";
+        // const R: &str = r"^[a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)*$";
+        const R: &str = r"^(?:[a-zA-Z0-9_]+|(?:\.[a-zA-Z0-9_]+)+)(?:\.[a-zA-Z0-9_]+)*$";
         let regex = match Regex::new(R) {
             Ok(r) => r,
             Err(e) => panic!("{e}")
         };
         assert!(regex.is_match("my_av_1_9.mp4"));
+        assert!(regex.is_match("my_av_1_9.mp4.jpg"));
         assert!(regex.is_match(".tonight.fun.av"));
         assert!("!#$%&'()-=~^|@`{[]}:*;+<>,/?\"\\ あいアイ愛¥".chars().all(|c| {
             !regex.is_match(&c.to_string())            
         }));
         assert!(!regex.is_match("..oh...good"));
+        assert!(!regex.is_match(""))
     }
 }

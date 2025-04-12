@@ -13,7 +13,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
-#reqwest = { version = "0.12.9", features = ["multipart", "stream", "http3"] }
-reqwest = { path = "../../reqwest", features = ["multipart", "stream", "http3"] }
+reqwest = { version = "0.12.9", features = ["multipart", "stream", "http3"] }
+#reqwest = { path = "../../reqwest", features = ["multipart", "stream", "http3"] }
 url = "2.5.3"
 futures-util = "0.3.31"
